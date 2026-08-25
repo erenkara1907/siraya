@@ -35,7 +35,13 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  if (!admin) return NextResponse.json({ error: "Service role key is not set." }, { status: 500 });
+  if (!admin) {
+    // Two different misconfigurations; naming the right one saves an hour.
+    const missing = !process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? "NEXT_PUBLIC_SUPABASE_URL"
+      : "SUPABASE_SERVICE_ROLE_KEY";
+    return NextResponse.json({ error: `${missing} is not set.` }, { status: 500 });
+  }
 
   const { data: due, error } = await admin
     .from("posts")
