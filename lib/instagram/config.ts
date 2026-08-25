@@ -4,15 +4,22 @@
  * user signs in with their Instagram credentials alone.
  */
 
-export const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID ?? "";
-export const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? "";
+/** An env var set to "" is set as far as `??` is concerned, and an empty
+ *  version would build the URL `graph.instagram.com//me`. Treat blank as unset. */
+function env(name: string, fallback = ""): string {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : fallback;
+}
+
+export const INSTAGRAM_APP_ID = env("INSTAGRAM_APP_ID");
+export const INSTAGRAM_APP_SECRET = env("INSTAGRAM_APP_SECRET");
 
 /**
  * Meta ships a new Graph version roughly twice a year and supports each for
  * about two years. Pinned rather than left unversioned so a new release cannot
  * silently change behaviour under us; override without a deploy if it ages out.
  */
-export const API_VERSION = process.env.INSTAGRAM_API_VERSION ?? "v23.0";
+export const API_VERSION = env("INSTAGRAM_API_VERSION", "v23.0");
 
 export const GRAPH_HOST = `https://graph.instagram.com/${API_VERSION}`;
 export const OAUTH_AUTHORIZE_URL = "https://www.instagram.com/oauth/authorize";
@@ -27,7 +34,7 @@ export const isInstagramConfigured = Boolean(INSTAGRAM_APP_ID && INSTAGRAM_APP_S
 
 /** Where Meta sends the user back. Must match an entry in the App Dashboard exactly. */
 export function redirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = env("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
   return `${base.replace(/\/$/, "")}/api/instagram/callback`;
 }
 
