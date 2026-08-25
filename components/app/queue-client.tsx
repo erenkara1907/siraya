@@ -9,6 +9,7 @@ import { DemoBanner, EmptyState } from "@/components/app/empty-state";
 import { NewPostButton } from "@/components/app/post-dialog";
 import { deletePost, updatePostStatus } from "@/lib/actions/posts";
 import { PLATFORM, PLATFORMS, STATUS_LABEL, STATUS_TONE, type Platform, type QueueItem } from "@/lib/demo/data";
+import { canPublish } from "@/lib/publishing";
 import type { QueueView } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +60,9 @@ export function QueueClient({ view }: { view: QueueView }) {
                 onClick={() => setPlat(p)}
                 className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition cursor-pointer", plat === p ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted")}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot(p) }} /> {PLATFORM[p].name}
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot(p) }} />
+                {PLATFORM[p].name}
+                {!canPublish(p) && <span className="text-[10px] opacity-70">· {ui.comingSoon}</span>}
               </button>
             ))}
           </div>

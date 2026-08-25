@@ -8,6 +8,7 @@ import { useLang } from "@/components/i18n/language-provider";
 import { createPost } from "@/lib/actions/posts";
 import { createClient } from "@/lib/supabase/client";
 import { PLATFORM, PLATFORMS, STATUS_LABEL, type Channel } from "@/lib/demo/data";
+import { canPublish, PUBLISHABLE_PLATFORMS } from "@/lib/publishing";
 
 const FIELD =
   "flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors";
@@ -16,8 +17,11 @@ const FIELD =
 const ACCEPTED = ["image/jpeg", "video/mp4"];
 const MAX_BYTES = 50 * 1024 * 1024;
 
-function mediaTypeOf(file: File): "IMAGE" | "REELS" {
-  return file.type === "video/mp4" ? "REELS" : "IMAGE";
+type PostType = "IMAGE" | "REELS" | "STORIES";
+
+/** A photo can be a feed post or a story; a video can be a reel or a story. */
+function typesFor(isVideoFile: boolean): PostType[] {
+  return isVideoFile ? ["REELS", "STORIES"] : ["IMAGE", "STORIES"];
 }
 
 /** `datetime-local` gives wall-clock text; the browser knows the zone, so turn
@@ -48,7 +52,8 @@ function PostDialog({ channels, onClose }: { channels: Channel[]; onClose: () =>
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [media, setMedia] = useState<{ url: string; type: string; name: string } | null>(null);
+  const [media, setMedia] = useState<{ url: string; name: string; isVideo: boolean } | null>(null);
+  const [postType, setPostType] = useState<PostType>("IMAGE");
 
   /** Uploads straight to Storage: the file has to sit at a public URL before
    *  Instagram can fetch it, and routing it through the server buys nothing. */
@@ -83,7 +88,9 @@ function PostDialog({ channels, onClose }: { channels: Channel[]; onClose: () =>
       if (uploadError) throw new Error(uploadError.message);
 
       const { data } = supabase.storage.from("media").getPublicUrl(path);
-      setMedia({ url: data.publicUrl, type: mediaTypeOf(file), name: file.name });
+      const isVideoFile = file.type === "video/mp4";
+      setMedia({ url: data.publicUrl, name: file.name, isVideo: isVideoFile });
+      setPostType(typesFor(isVideoFile)[0]);
     } catch (thrown) {
       setError(thrown instanceof Error ? thrown.message : ui.uploadFailed);
       event.target.value = "";
@@ -100,11 +107,12 @@ function PostDialog({ channels, onClose }: { channels: Channel[]; onClose: () =>
     form.set("scheduledAt", toInstant(String(form.get("scheduledAt") ?? "")));
     form.delete("mediaFile");
     form.set("mediaUrl", media?.url ?? "");
-    form.set("mediaType", media?.type ?? "IMAGE");
+    form.set("mediaType", media ? postType : "IMAGE");
 
     startTransition(async () => {
       const result = await createPost(form);
       if (result.ok) onClose();
+      else if (result.error === "UNPUBLISHABLE_PLATFORM") setError(ui.cannotSchedule);
       else setError(result.error ?? ui.errGeneric);
     });
   }
@@ -126,9 +134,14 @@ function PostDialog({ channels, onClose }: { channels: Channel[]; onClose: () =>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="platform">{ui.postPlatform}</Label>
-              <select id="platform" name="platform" required className={FIELD} defaultValue={PLATFORMS[0]}>
-                {PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM[p].name}</option>)}
+              <select id="platform" name="platform" required className={FIELD} defaultValue={PUBLISHABLE_PLATFORMS[0]}>
+                {PLATFORMS.map((p) => (
+                  <option key={p} value={p} disabled={!canPublish(p)}>
+                    {PLATFORM[p].name}{canPublish(p) ? "" : ` (${ui.comingSoon})`}
+                  </option>
+                ))}
               </select>
+              <p className="text-[11px] text-muted-foreground">{ui.onlyInstagram}</p>
             </div>
 
             <div className="space-y-1.5">
@@ -163,6 +176,29 @@ function PostDialog({ channels, onClose }: { channels: Channel[]; onClose: () =>
               <input id="mediaFile" name="mediaFile" type="file" accept="image/jpeg,video/mp4" onChange={upload} className="sr-only" />
             </label>
           </div>
+
+          {media && (
+            <div className="space-y-1.5">
+              <Label htmlFor="postType">{ui.postType}</Label>
+              <div className="flex gap-2">
+                {typesFor(media.isVideo).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setPostType(type)}
+                    className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                      postType === type
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {type === "IMAGE" ? ui.typeFeed : type === "REELS" ? ui.typeReel : ui.typeStory}
+                  </button>
+                ))}
+              </div>
+              {postType === "STORIES" && <p className="text-[11px] text-muted-foreground">{ui.storyNote}</p>}
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">

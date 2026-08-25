@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { PLATFORM, type Platform, type PostStatus } from "@/lib/demo/data";
+import { canPublish } from "@/lib/publishing";
 
 export interface ActionResult { ok: boolean; error?: string }
 
@@ -48,6 +49,12 @@ function readPostForm(form: FormData) {
     scheduled = parsed.toISOString();
   }
   if (status === "scheduled" && !scheduled) return { error: "A scheduled post needs a date and time." as const };
+
+  // Only Instagram has a publisher behind it. Letting another platform reach
+  // "scheduled" would leave a post sitting in the queue for ever, silently.
+  if ((status === "scheduled" || status === "published") && !canPublish(platform as Platform)) {
+    return { error: "UNPUBLISHABLE_PLATFORM" as const };
+  }
 
   return {
     value: {

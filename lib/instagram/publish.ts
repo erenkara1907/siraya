@@ -6,7 +6,10 @@ export type MediaType = "IMAGE" | "REELS" | "STORIES";
 type ContainerStatus = "EXPIRED" | "ERROR" | "FINISHED" | "IN_PROGRESS" | "PUBLISHED";
 
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 20; // ~60s — video transcoding is the slow case.
+// ~5 minutes. Reels transcoding routinely outruns a minute, and the route is
+// allowed 300s, so waiting is cheaper than failing a post Instagram would have
+// accepted moments later.
+const POLL_MAX_ATTEMPTS = 100;
 
 async function call(url: string, init: RequestInit, context: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, init);
@@ -35,6 +38,15 @@ export interface ContainerInput {
 }
 
 /**
+ * A story can be a photo or a video, and each takes a different parameter, so
+ * the media type alone is not enough to build the call. Uploads are named .jpg
+ * or .mp4 by the dialog, which is what this reads.
+ */
+function isVideo(url: string): boolean {
+  return /\.(mp4|mov)(\?|#|$)/i.test(url);
+}
+
+/**
  * Step 1 of 2. Instagram fetches `mediaUrl` itself, so it must be reachable
  * from the public internet — a localhost or signed-private URL will fail here.
  */
@@ -43,9 +55,13 @@ export async function createContainer(input: ContainerInput): Promise<string> {
 
   if (input.mediaType === "IMAGE") {
     params.set("image_url", input.mediaUrl);
-  } else {
+  } else if (input.mediaType === "REELS") {
     params.set("video_url", input.mediaUrl);
-    params.set("media_type", input.mediaType);
+    params.set("media_type", "REELS");
+  } else {
+    // STORIES — photo or video, and sending the wrong parameter is rejected.
+    params.set(isVideo(input.mediaUrl) ? "video_url" : "image_url", input.mediaUrl);
+    params.set("media_type", "STORIES");
   }
 
   const body = await call(
@@ -81,7 +97,12 @@ export async function waitForContainer(containerId: string, accessToken: string)
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 
-  throw new Error("Instagram did not finish processing the media in time.");
+  // Not a rejection: Instagram is still working. Saying so keeps the operator
+  // from hunting for a fault in media that was probably fine.
+  throw new Error(
+    "Instagram was still processing the media after 5 minutes. The post was not published; " +
+    "it may simply be a large file — try again, and check the account before re-posting.",
+  );
 }
 
 /** Step 2 of 2. Returns the published media's Instagram id. */
