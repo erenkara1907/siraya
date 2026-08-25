@@ -32,8 +32,16 @@ export const SCOPES = ["instagram_business_basic", "instagram_business_content_p
 
 export const isInstagramConfigured = Boolean(INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET);
 
-/** Where Meta sends the user back. Must match an entry in the App Dashboard exactly. */
+/**
+ * Where Meta sends the user back. Instagram matches this against the dashboard
+ * list character for character — and the dashboard is known to append a
+ * trailing slash when it saves. Set INSTAGRAM_REDIRECT_URI to whatever the list
+ * actually shows and this sends exactly that, no guessing.
+ */
 export function redirectUri(): string {
+  const override = env("INSTAGRAM_REDIRECT_URI");
+  if (override) return override;
+
   const base = env("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
   return `${base.replace(/\/$/, "")}/api/instagram/callback`;
 }
